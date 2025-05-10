@@ -2,8 +2,30 @@
 :: Completely disable Windows Update
 :: PsExec is required to get system privileges - it should be in this directory
 
-if not "%1"=="admin" (powershell start -verb runas '%0' admin & exit /b)
-if not "%2"=="system" (powershell . '%~dp0\PsExec.exe' /accepteula -i -s -d '%0' admin system & exit /b)
+@echo off
+:: Проверка прав администратора
+NET FILE 1>NUL 2>NUL || (ECHO Запустите скрипт от имени Администратора! && PAUSE && EXIT)
+
+:: Настройка политики выполнения PowerShell
+powershell -Command "Set-ExecutionPolicy Bypass -Scope Process -Force"
+
+:: Получение прав TrustedInstaller для критичных операций
+for %%i in (WaaSMedicSvc, wuaueng) do (
+    takeown /F C:\Windows\System32\%%i.dll /A
+    icacls C:\Windows\System32\%%i.dll /grant:r Administrators:F /T /C /Q
+)
+
+:: Отключение контроля учетных записей (UAC)
+reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" /v EnableLUA /t REG_DWORD /d 0 /f
+
+:: Разрешение доступа к планировщику задач
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Task Scheduler\5.0" /v AllowProtectedTasks /t REG_DWORD /d 0 /f
+
+:: Получение полного контроля над файлами задач
+takeown /F C:\Windows\System32\Tasks\Microsoft\Windows\* /A /R /D Y
+icacls C:\Windows\System32\Tasks\Microsoft\Windows\* /grant:r Administrators:(F) /T /C /Q /L
+icacls C:\Windows\System32\Tasks\Microsoft\Windows\* /grant:r *S-1-5-32-544:(F) /T /C /Q /L
+
 
 :: Disable update related services
 for %%i in (wuauserv, UsoSvc, uhssvc, WaaSMedicSvc) do (
